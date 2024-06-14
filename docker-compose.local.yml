@@ -1,0 +1,97 @@
+name: 'mad_soft_test_memes'
+
+volumes:
+  postgres_memes_data:
+  postgres_users_data:
+  minio_data:
+
+services:
+  db_memes:
+    container_name: db_memes
+    image: postgres:latest
+    volumes:
+      - postgres_memes_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_MEMES_DATABASE_NAME}", "--quiet"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_MEMES_DATABASE_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_MEMES_PORT}:${POSTGRES_PORT}"
+
+  db_users:
+    container_name: db_users
+    image: postgres:latest
+    volumes:
+      - postgres_users_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_USERS_DATABASE_NAME}", "--quiet"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_USERS_DATABASE_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_USERS_PORT}:${POSTGRES_PORT}"
+  
+  minio:
+    image: minio/minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "9000:9000"
+
+  s3_api:
+    container_name: s3_api
+    build: 
+      context: .
+      dockerfile: s3.Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      db_memes:
+        condition: service_healthy
+      db_users:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+  
+  memes_api:
+    container_name: memes_api
+    build: 
+      context: .
+      dockerfile: memes.Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db_memes:
+        condition: service_healthy
+      db_users:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      s3_api:
+        condition: service_started
