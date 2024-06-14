@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from typing import Optional
 
 import requests
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -11,7 +12,7 @@ from api.validators import (
     validate_text,
 )
 from core.config import app_config
-from core.constants import DEFAULT_LIMIT_PER_PAGE, DEFAULT_PAGE, NO_CONNECTION
+from core.constants import NO_CONNECTION
 from core.db import get_async_session
 from core.user import current_user
 from crud.memes import memes_crud
@@ -23,20 +24,22 @@ router = APIRouter()
 
 @router.get('/', response_model=list[MemeRead])
 async def get_all_memes(
-    page: int = Query(DEFAULT_PAGE),
-    limit: int = Query(DEFAULT_LIMIT_PER_PAGE),
+    page: Optional[int] = Query(None),
+    limit: Optional[int] = Query(None),
     session: AsyncSession = Depends(get_async_session),
 ):
     """
     Функция для получения списка всех мемов с пагинацией.
 
     Принимает параметры:
-        - page: int - номер страницы(по умолчанию - 1);
-        - limit: int - количество мемов на странице(по умолчанию - 5);
+        - page: int (Опционально) - номер страницы;
+        - limit: int (Опционально) - количество мемов на странице.
+                Если указать только limit, пагинация не сработает;
         - session - асинхронная сессия для выполнения запросов к базе данных.
     """
-    left_index = (page - 1) * limit
-    return (await memes_crud.get_all(session))[left_index : left_index + limit]
+    if page is None:
+        return await memes_crud.get_all(session)
+    return await memes_crud.get_all_with_pagination(page, limit, session)
 
 
 @router.get('/{id}', response_model=MemeRead)
